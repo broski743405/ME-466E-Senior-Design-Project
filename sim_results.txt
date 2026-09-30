@@ -1,0 +1,61 @@
+=== 0. Mixer sanity ===
+collective 0.5 capped at 0.3 -> ESC us 1300/1300 (expect 1300/1300 +-yaw), servo x 1550 y 1375 (y clamped at tilt limit)
+
+=== 1. Attitude loop sign check (hang upright under power, start tilted 15 deg, planar) ===
+  t=0.0s  body tilt 15.0 deg  pod -0.2 deg
+  t=0.8s  body tilt -1.0 deg  pod 0.2 deg
+  t=1.6s  body tilt -2.1 deg  pod 0.0 deg
+  t=2.4s  body tilt -2.5 deg  pod -0.0 deg
+  t=3.2s  body tilt -2.8 deg  pod -0.0 deg
+
+=== 2a. Controlled descent from a 6.1 m release, IMU only, preset ROBUST (default) ===
+touchdown vertical speed [m/s]   (uncontrolled free-fall impact would be ~10.9 m/s; time = release to touchdown)
+  ideal sensing, exact release height:
+    TWR 1.30: lag 0.15 -> 0.38 (3.0s)   lag 0.25 -> 2.76 (1.7s)   lag 0.40 -> 5.02 (1.4s)   
+    TWR 1.50: lag 0.15 -> 0.39 (2.9s)   lag 0.25 -> 2.02 (1.7s)   lag 0.40 -> 4.91 (1.4s)   
+    TWR 1.85: lag 0.15 -> 0.39 (2.8s)   lag 0.25 -> 0.98 (2.1s)   lag 0.40 -> 4.56 (1.4s)   
+  TWR 1.5, lag 0.25, release height error (assumed - true):
+    -1.0 m -> 2.26   -0.5 m -> 0.47   +0.0 m -> 2.02   +0.5 m -> 2.92   +1.0 m -> 3.60   +1.5 m -> 4.16   
+  TWR 1.5, lag 0.25, controller's belief about thrust (x real):
+    x0.85 -> 0.40   x1.00 -> 2.02   x1.15 -> 4.02   
+  TWR 1.5, lag 0.25, accelerometer scale error / offset that appeared after the rest reading:
+    scale -3% -> 2.02   scale +3% -> 2.02   offset -0.3 -> 1.96   offset +0.3 -> 2.08   
+  TWR 1.5, lag 0.25, vibration offset that exists only while rotors run (m/s^2, negative = IMU under-reads):
+    -0.30 -> 1.97   -0.10 -> 2.00   -0.05 -> 2.01   -0.02 -> 2.01   +0.00 -> 2.02   +0.05 -> 2.02   +0.30 -> 2.06   
+
+=== 2b. Controlled descent from a 6.1 m release, IMU only, preset GENTLE ===
+touchdown vertical speed [m/s]   (uncontrolled free-fall impact would be ~10.9 m/s; time = release to touchdown)
+  ideal sensing, exact release height:
+    TWR 1.30: lag 0.15 -> 0.23 (4.5s)   lag 0.25 -> 0.21 (4.8s)   lag 0.40 -> 2.77 (1.8s)   
+    TWR 1.50: lag 0.15 -> 0.23 (4.4s)   lag 0.25 -> 0.21 (4.7s)   lag 0.40 -> 0.10 (5.0s)   
+    TWR 1.85: lag 0.15 -> 0.23 (4.4s)   lag 0.25 -> 0.21 (4.7s)   lag 0.40 -> 0.25 (4.4s)   
+  TWR 1.5, lag 0.25, release height error (assumed - true):
+    -1.0 m -> 2.02   -0.5 m -> 0.25   +0.0 m -> 0.21   +0.5 m -> 0.53   +1.0 m -> 0.87   +1.5 m -> 1.31   
+  TWR 1.5, lag 0.25, controller's belief about thrust (x real):
+    x0.85 -> 0.22   x1.00 -> 0.21   x1.15 -> 0.28   
+  TWR 1.5, lag 0.25, accelerometer scale error / offset that appeared after the rest reading:
+    scale -3% -> 0.21   scale +3% -> 0.21   offset -0.3 -> 12.00   offset +0.3 -> 1.43   
+  TWR 1.5, lag 0.25, vibration offset that exists only while rotors run (m/s^2, negative = IMU under-reads):
+    -0.30 -> 9.67   -0.10 -> 4.43   -0.05 -> 1.75   -0.02 -> 0.17   +0.00 -> 0.21   +0.05 -> 0.40   +0.30 -> 1.14   
+
+  TWR 1.05 (cannot brake): 10.93 m/s, controller state 4 (4 = FAULT, refuses to try)
+
+=== 3. Hop, target 5 ft (1.524 m) forward, planar sim; 'first touch' = where the base first hits the ground (what the controller aims at) ===
+  (roll-out after touchdown depends on ground friction / shell, which is NOT modelled credibly; 'rest' shown for information only)
+  TWR 1.30 attitude-hold: first touch 0.00 ft, horiz speed at touch 0.0 m/s, burn -1.00 s, airborne -1.00 s, peak pitch 0 deg, flew 0, final state 7 | rest 0.0 ft
+           open-loop pod 25 deg : first touch 0.00 ft, peak body pitch 1916 deg, flew 0, final state 6
+  TWR 1.50 attitude-hold: first touch 5.57 ft, horiz speed at touch 3.7 m/s, burn 0.59 s, airborne 0.71 s, peak pitch 39 deg, flew 1, final state 6 | rest 26.4 ft
+           open-loop pod 25 deg : first touch 3.99 ft, peak body pitch 382 deg, flew 1, final state 6
+  TWR 1.85 attitude-hold: first touch 5.76 ft, horiz speed at touch 3.4 m/s, burn 0.42 s, airborne 0.76 s, peak pitch 34 deg, flew 1, final state 6 | rest 20.6 ft
+           open-loop pod 25 deg : first touch 0.00 ft, peak body pitch 2313 deg, flew 0, final state 6
+  TWR 1.50: predicted landing at the moment of cut-off = 5.05 ft, actual first touch = 5.57 ft (bias 0.52 ft)
+  -- effect of hop_range_scale (TWR 1.50 / 1.85), first-touch distance in ft --
+   scale 1.00: 5.57 / 5.76   scale 1.05: 4.96 / 5.76   scale 1.10: 4.96 / 5.76   scale 1.15: 4.96 / 4.91   
+  -- attitude-hold hop sensitivity (TWR 1.50), first-touch distance in ft --
+   lag 0.15: 5.82   lag 0.25: 5.57   lag 0.40: 0.00   
+   inertia 0.03: 5.62   inertia 0.06: 5.42   
+   thrust belief x0.85: 0.00   thrust belief x1.15: 5.39   
+   accel scale -3%: 5.57   accel scale +3%: 5.57   
+   lean 20 deg: 5.90 (state 6)   lean 30 deg: 0.00 (state 7)   
+   seed 1: 5.57   seed 2: 5.57   seed 3: 5.58   seed 4: 5.58   seed 5: 5.60   seed 6: 5.58   
+   landing brake ON: first touch 5.57 ft, touchdown vz 1.00 m/s, state 6
