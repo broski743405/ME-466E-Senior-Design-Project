@@ -1,0 +1,95 @@
+Weeble Phase 1 sim (v2). Planar, assumed plant. Every number below is a MODEL result, not a measurement.
+
+=== 0. Mixer sanity ===
+  collective 0.5 capped at 0.3 -> ESC us 1300/1300 (expect 1300/1300), servo x 1550 y 1375 (y clamped at tilt limit -> 1375)
+
+=== 1. Attitude loop in the air (start tilted 15 deg, thrust ~ weight) -- estimator fix ===
+  v1 (accel correction ON in air), gyro bias error 0.0 deg/s: t=0.0s  15.0  t=0.8s  -1.0  t=1.6s  -2.1  t=2.4s  -2.5  t=3.2s  -2.8  t=4.0s  -3.0   (true body tilt, deg)
+  v2 (gyro only in air)     , gyro bias error 0.0 deg/s: t=0.0s  15.0  t=0.8s  -1.3  t=1.6s  -1.7  t=2.4s  -1.0  t=3.2s  -0.6  t=4.0s  -0.3   (true body tilt, deg)
+  v2 (gyro only in air)     , gyro bias error 0.5 deg/s: t=0.0s  15.0  t=0.8s  -1.7  t=1.6s  -2.5  t=2.4s  -2.2  t=3.2s  -2.2  t=4.0s  -2.3   (true body tilt, deg)
+
+=== 2. Controlled Landing from a 6.1 m release (IMU only). Touchdown speed [m/s], free fall would be ~10.9 ===
+  throttle cap 15 % (boot default): started=0 -> not enough thrust at the throttle cap to brake (raise 'cap' or reduce payload), state Fault   [v1: started, hit at 9.9 m/s]
+  throttle cap 70 % at TWR 1.5 (spare decel 0.49 m/s^2 < 0.5): started=0
+  throttle cap 80 % at TWR 1.5 (spare decel 1.96 m/s^2): started=1, touchdown 2.96 m/s (plans with the capped thrust)
+  TWR 1.05: started=0 (not enough thrust at the throttle cap to brake (raise 'cap' or reduce payload))
+  -- preset ROBUST (default) --
+    nominal (TWR 1.5, lag 0.25 known): 1.99 m/s, 1.7 s, tilt -2.6 deg, sequence: Await Release > Descending > Landing > Amp Down > Rest
+    thrust lag MEASURED and entered (controller knows it):
+      TWR 1.30: lag 0.15 -> 0.29 (2.8s)  lag 0.25 -> 2.74 (1.7s)  lag 0.40 -> 4.70 (1.5s)  
+      TWR 1.50: lag 0.15 -> 0.30 (3.0s)  lag 0.25 -> 1.99 (1.7s)  lag 0.40 -> 4.35 (1.4s)  
+      TWR 1.85: lag 0.15 -> 0.29 (2.9s)  lag 0.25 -> 1.01 (2.1s)  lag 0.40 -> 3.58 (1.4s)  
+    thrust lag left at the 0.25 s placeholder (true lag differs):
+      TWR 1.50: true lag 0.15 -> 0.39   true lag 0.40 -> 4.90   
+    release height error (assumed - true): -1.0 m -> 2.37  -0.5 m -> 0.46  +0.0 m -> 1.99  +0.5 m -> 2.90  +1.0 m -> 3.58  
+    thrust belief (x real): x0.85 -> 0.41  x1.15 -> 4.00    payload entered wrong (real - entered): -0.2 kg -> 0.29  +0.2 kg -> 3.77  
+    accel scale / offset after the rest reading: scale -3% -> 1.99  scale +3% -> 1.99  offset -0.3 -> 1.93  offset +0.3 -> 2.05  
+    vibration offset only while rotors run (m/s^2, - = under-reads): -0.30 -> 1.94  -0.10 -> 1.97  -0.05 -> 1.98  +0.00 -> 1.99  +0.05 -> 2.00  +0.30 -> 2.03  
+  -- preset GENTLE --
+    nominal (TWR 1.5, lag 0.25 known): 0.22 m/s, 4.9 s, tilt -0.0 deg, sequence: Await Release > Descending > Landing > Amp Down > Rest
+    thrust lag MEASURED and entered (controller knows it):
+      TWR 1.30: lag 0.15 -> 0.21 (4.7s)  lag 0.25 -> 0.22 (4.9s)  lag 0.40 -> 2.58 (1.8s)  
+      TWR 1.50: lag 0.15 -> 0.21 (4.6s)  lag 0.25 -> 0.22 (4.9s)  lag 0.40 -> 0.34 (4.5s)  
+      TWR 1.85: lag 0.15 -> 0.21 (4.5s)  lag 0.25 -> 0.22 (4.9s)  lag 0.40 -> 0.05 (5.1s)  
+    thrust lag left at the 0.25 s placeholder (true lag differs):
+      TWR 1.50: true lag 0.15 -> 0.22   true lag 0.40 -> 0.36   
+    release height error (assumed - true): -1.0 m -> 2.26  -0.5 m -> 0.23  +0.0 m -> 0.22  +0.5 m -> 0.51  +1.0 m -> 0.85  
+    thrust belief (x real): x0.85 -> 0.22  x1.15 -> 0.28    payload entered wrong (real - entered): -0.2 kg -> 0.22  +0.2 kg -> 0.23  
+    accel scale / offset after the rest reading: scale -3% -> 0.22  scale +3% -> 0.22  offset -0.3 -> 12.10  offset +0.3 -> 1.43  
+    vibration offset only while rotors run (m/s^2, - = under-reads): -0.30 -> 9.78  -0.10 -> 4.60  -0.05 -> 2.07  +0.00 -> 0.22  +0.05 -> 0.36  +0.30 -> 1.14  
+
+=== 3. Launch Horizontal Distance (hop). 'first touch' = where the base first hits (what the controller aims at) ===
+  (roll-out after touchdown depends on ground friction / shell: NOT modelled credibly, not shown)
+  throttle cap 15 %: started=0 (not feasible: TWR at the throttle cap x cos(lean+10) too low)   [v1: started, never lifted off, no reason given]
+  nominal 5 ft, TWR 1.5: first touch 5.12 ft (controller estimate 5.02 ft), predicted at cut 5.04 ft, burn 0.59 s, horiz speed 2.4 m/s
+    sequence: Launch > Amp Up > Ascending > Descending > Amp Down > Rest
+  target distance -> first touch [ft] (TWR 1.50 / 1.85, default lean 15):
+    2 -> 2.22 / 2.00   3 -> 2.94 / 2.93   4 -> 4.19 / 4.03   5 -> 5.12 / 5.28   6 -> 6.14 / 5.96   8 -> 8.39 / 8.21   
+  TWR 1.30 lean 25 (old default): started=0 (not feasible: TWR at the throttle cap x cos(lean+10) too low)
+  TWR 1.30 lean 15: first touch 5.07 ft, touchdown
+  old default lean 25, 3 ft target, TWR 1.5, 6 seeds: 3.96 3.43 4.51 3.95 4.52 2.95  (cut often fires on the first airborne tick)
+  lean 15, 3 ft target, same seeds: 2.94 2.94 2.94 2.94 2.94 2.94 
+  sensitivity at 5 ft, TWR 1.5, lean 15 (first touch, ft):
+    lag 0.15: 4.91 (touchdown)   lag 0.40: 5.28 (touchdown)   
+    inertia 0.03: 5.13   inertia 0.06: 5.09   thrust belief x0.85: 5.32   thrust belief x1.15: 4.98   
+    pod misalignment -2 deg: 5.07   pod misalignment +2 deg: 4.99   payload err -0.2 kg: 4.86   payload err +0.2 kg: 4.98   gyro bias err 0.5 deg/s: 4.53   lean 10: 5.23   lean 20: 5.29   
+    seeds: 5.12 5.13 5.13 5.12 5.12 5.12 
+  landing brake ON: first touch 5.16 ft, touchdown vz 1.74 m/s, sequence: Launch > Amp Up > Ascending > Descending > Landing > Amp Down > Rest
+  open-loop pod mode (not recommended): first touch 0.00 ft, peak body pitch 1878 deg
+
+=== 4. Launch Vertical Distance (vertical hop). true apex of the base [m] / touchdown speed [m/s] ===
+  nominal 0.5 m, brake, TWR 1.5: apex 0.48 m (est 0.48, predicted at cut 0.50), touchdown 0.92 m/s, burn 0.69 s, peak tilt 0.0 deg
+    sequence: Launch > Amp Up > Ascending > Descending > Landing > Amp Down > Rest
+  throttle cap 15 %: started=0 (not feasible: TWR at the throttle cap x cos(lean+10) too low)
+  target -> apex / touchdown, landing brake ON:
+    TWR 1.30 lag .25: 0.15 -> 0.16/0.85  0.30 -> 0.29/0.97  0.50 -> 0.51/1.20  0.75 -> 0.73/1.38  1.00 -> 1.00/1.55  
+    TWR 1.50 lag .25: 0.15 -> 0.15/0.83  0.30 -> 0.29/0.92  0.50 -> 0.48/0.92  0.75 -> 0.73/1.08  1.00 -> 1.03/1.20  
+    TWR 1.85 lag .25: 0.15 -> 0.14/0.81  0.30 -> 0.30/0.91  0.50 -> 0.52/0.78  0.75 -> 0.80/0.78  1.00 -> 1.03/0.75  
+    TWR 1.50 lag 0.15: 0.15 -> 0.16/0.60  0.30 -> 0.32/0.19  0.50 -> 0.52/0.28  0.75 -> 0.78/0.32  1.00 -> 1.01/0.32  
+    TWR 1.50 lag 0.40: 0.15 -> 0.16/0.91  0.30 -> 0.30/1.15  0.50 -> 0.49/1.34  0.75 -> 0.74/1.62  1.00 -> 1.04/1.87  
+  ballistic (no brake), TWR 1.5: 0.15 -> 0.15/1.40  0.30 -> 0.29/2.07  0.50 -> 0.48/2.77  
+  sensitivity at 0.5 m, brake, TWR 1.5 (apex / touchdown):
+    thrust belief x0.85: 0.48/0.29   thrust belief x1.15: 0.48/1.31   lag believed 0.15 (true .25): 0.60/1.02   lag believed 0.40 (true .25): 0.38/1.03   
+    pod misalign -2: 0.48/0.93 tilt 3   pod misalign +2: 0.48/0.93 tilt 3   vib -0.3: 0.60/2.52   vib +0.3: 0.43/1.42   scale -3%: 0.54/0.88   scale +3%: 0.48/0.92   
+    seeds: 0.48/0.92 0.48/0.92 0.48/0.91 0.48/0.91 0.48/0.89 0.48/0.92 
+
+=== 5. Abort paths (CSV 'Abort / Fallback' column) ===
+  descent, powered-time limit forced to 1.2 s: motors cut, touchdown 4.43 m/s, Await Release > Descending > Landing > Amp Down > Rest
+  hop, real TWR 0.95 but controller believes 1.52: 'no liftoff within the max burn time', Launch > Amp Up > Amp Down > Rest
+  vhop, same: 'no liftoff within the max burn time', Launch > Amp Up > Amp Down > Rest
+  vhop, 30 deg pod misalignment (beyond gimbal authority): 'tilt above limit before liftoff -> thrust cut', Launch > Amp Up > Amp Down > Rest
+  vhop, 20 deg pod misalignment: apex 0.52 m, peak tilt 36 deg, touchdown 1.19 m/s, 'touchdown'
+
+=== 6. Six-position accelerometer calibration solver (synthetic, sensor frame) ===
+  6 poses, pose error ~2 deg: ACCEPTED  off 0.348 -0.222 0.614 (true .350 -.220 .610)  scale 1.0208 0.9840 1.0120 (true 1.0210 .9840 1.0120)  rms 0.000
+  10 poses, pose error ~8 deg: ACCEPTED  off 0.352 -0.222 0.611 (true .350 -.220 .610)  scale 1.0211 0.9844 1.0123 (true 1.0210 .9840 1.0120)  rms 0.002
+  8 poses, pose error ~8 deg: REFUSED: poses do not cover every axis pointing up AND down
+
+=== 7. Supervisor / macrostate checks ===
+  arm without calibration: refused (calibration not valid -- run 'cal')
+  hop with lean 40 deg (> gimbal limit 25): refused (bad arguments (lean above gimbal limit, height above max, ...)), state Armed
+  vhop 3 m (> max 1.0 m): refused (bad arguments (lean above gimbal limit, height above max, ...))
+  hop while drone is rotating (never at rest): Launch > Armed
+  kill during Await Release -> Fault; arm from Fault: refused; after disarm: Rest -> arm: ok
+  second routine while descent armed: refused (must be Armed with no routine running)
+  descent, no release within await timeout (2 s here): Fault (no release within the await-release timeout)

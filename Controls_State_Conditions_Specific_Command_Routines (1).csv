@@ -1,0 +1,76 @@
+﻿Routine,If Conditions,Initial Input Metrics,Macrostate Sequence,Key Setpoints / Behavior,Success Criteria,Abort / Fallback,Data to Log,Status in Code
+Controlled Landing (from mothership release),"State is Armed
+Calibration valid (still + upright)
+Safety lock disengaged
+Release height measured and entered
+Release is a true drop from rest (not a throw)
+Throttle cap raised for the real drop (boot default 15% would prevent braking)
+Thrust-to-weight high enough to brake (code refuses below ~0.5 m/s2 spare braking acceleration)
+ENTRY CASE B: same routine also runs at the end of a hop if landing brake is enabled (state Descending)","Release height [m] (default 6.096 = 20 ft; MEASURE it)
+Descent preset: ROBUST (default) or GENTLE
+Throttle cap [%]
+Payload weight [kg] (changes mass and braking margin)",Armed -> Await Release -> Descending (free fall) -> Landing (braking) -> Amp Down -> Rest,"Free fall detected at |specific force| < 0.35 g for 0.04 s
+Optional 0.1 s motors-off zero-g check, then idle spin
+Height and speed dead-reckoned from release height
+Brake along a speed-vs-height curve built from available thrust and thrust lag
+Attitude held upright by the gimbal
+Motors cut on touchdown","Touchdown speed <= TBD (team to set). Sim: ROBUST ~0.4-2 m/s, up to ~5 m/s if thrust lag is slow; GENTLE ~0.2 m/s but fails if motors shift the accelerometer
+Upright at touchdown (tilt < TBD deg)
+No Fault; ends in Rest
+Verify with log (estimated speed, peak impact g) AND video: IMU-only speed drifts","Kill at any time -> Fault
+Not enough thrust to brake -> Fault (does not try)
+Tilt > 50 deg while braking -> thrust cut
+Powered-time limit (ROBUST 5 s, GENTLE 12 s) -> motors cut
+Mission time limit 25 s","Estimated height and vertical speed, specific force, commanded throttle, tilt, state, stored vs in-flight zero-g offset (to add)","Implemented v2 ('descent'). Macrostates Await Release > Descending > Landing > Amp Down > Rest. Payload input ('payload'). Feasibility now uses thrust AT THE THROTTLE CAP and is checked when 'descent' is typed (v1 checked only after release, at 100 % thrust). Zero-g offset vs stored calibration printed in the summary. Sim-tested (planar)."
+Launch Horizontal Distance (hop),"State is Armed (arrive from Rest via Arm)
+Drone at rest on level ground
+Calibration valid
+Safety lock disengaged
+Thrust-to-weight x cos(lean + 10 deg) >= 1.15 using the payload weight entered
+Throttle cap raised for the hop
+Clear area downrange AND for roll-out after touchdown","Distance [ft] (default 5; max TBD; v2 sim: 2-8 ft at TWR 1.3-1.85)
+Bearing [deg clockwise from drone forward at start; 0 = forward, +90 = right]. No compass: east/west not available
+Payload weight [kg] (CDR table: 0.454 kg inside a 2.144 kg total, so base drone = 1.690 kg)
+Lean angle [deg] (default 15 in v2, was 25; must be <= gimbal limit)
+Landing mode: ballistic (default) or brake
+Range scale (default 1.0; tuned from tests)","Armed -> Launch (settle, tip) -> Amp Up -> Ascending (burn, cut, coast) -> Descending -> [Landing if brake] -> Amp Down -> Rest","Settle 0.4 s, zero position estimate, store heading
+Tip: low thrust (~5 N, below weight), whole drone leaned to the lean angle toward the bearing
+Burn: full thrust (cap), lean held, steer against predicted sideways miss
+Cut when predicted landing distance >= distance / range scale (thrust tail included)
+Coast with pod held 0.5 s, then gimbal centered","First touchdown within +/-1 ft of target (stretch +/-0.5 ft). TEAM TO CONFIRM which point counts: first touchdown or final rest after rolling
+Sim: ~3.5 m/s horizontal speed at touchdown, so roll-out is large and NOT controlled
+No Fault; ends in Rest","Not at rest after 3 s -> Armed (fault)
+Not feasible -> Armed (fault)
+Tip not reached in 1.5 s -> Amp Down
+No liftoff within 0.8 s burn -> cut, Amp Down
+Kill / mission time limit 25 s -> Fault","Estimated position and velocity, lean angle, throttle, predicted landing distance and sideways miss at cut, burn time. Measure real landing point with a tape","Implemented v2 ('hop <ft> [bearing] [lean=] [land=] [scale=]'). Liftoff and apex transitions, payload input, wait-for-rest (Amp Down), tilt guard, cap-aware feasibility. Default lean changed 25 -> 15 deg (see README). Sim-tested planar 2-8 ft. Yaw and sideways axes untested"
+Launch Vertical Distance (vertical hop),"Same as Launch Horizontal Distance
+Landing brake required for anything but a very low hop: impact speed ~ sqrt(2 g h) is about 4.4 m/s from 1 m and 6.3 m/s from 2 m","Height [ft] (max TBD)
+Payload weight [kg]
+Landing mode: brake (default)
+Throttle cap [%]","Armed -> Launch (settle only, no tip) -> Amp Up -> Ascending (burn, cut, coast) -> Descending -> Landing (brake) -> Amp Down -> Rest","Lean target 0 deg, attitude loop active from the first moment rotors spin (axial thrust above ~4.4 N makes the upright round base unstable)
+Burn until PREDICTED apex height >= target (thrust tail included)
+Hand over to Controlled Landing (entry case B) using the current height and speed estimate","Apex within +/-TBD of target (needs video or a rangefinder to verify; dead-reckoned height is only trusted over ~1 s)
+Touchdown speed <= TBD, upright
+No Fault; ends in Rest","Same as Launch Horizontal Distance
+Tilt > 50 deg -> thrust cut","Estimated height, vertical speed, predicted apex at cut, throttle, tilt","Implemented v2 ('vhop <ft> [land=]', VHopController): upright burn with attitude loop from spin-up, apex predictor with thrust tail, hand-off to Controlled Landing at apex. Max height parameter 1.0 m (TBD). Sim-tested planar 0.15-1.0 m"
+Calibrate IMU (support),"State is Rest (disarmed)
+Drone still and upright for 2 s",None (pre-test six-position calibration with stored values: TO ADD),Rest (no flight states),"Average accelerometer and gyro for 2 s, set gravity direction and gyro bias","Mean |accel| within 1 m/s2 of 9.81
+Tilt < 10 deg
+Gyro quiet",Warnings printed; do not arm if tilt or noise warnings appear,"Gyro bias, mean accel, tilt","Implemented v2: 'cal' now blocks arming on failure; 'cal6' six-position accel calibration (least-squares fit, stored in flash)"
+Arm / Disarm / Kill (support),"Arm: calibration valid, safety lock released, battery OK (if monitored)
+Disarm and Kill: any state",None,Rest <-> Armed; Kill: any state -> Fault,"Arm leaves motors at ESC minimum
+Kill ('k') sets motors to minimum and centers gimbal immediately","Outputs safe after Kill
+Armed state shown in status",n/a,Fault code on kill,"Implemented v2: software safety lock ('unlock', re-engages at Rest/Fault); optional hardware lock pin and battery pin (disabled until wired). Kill -> Fault; 'disarm' Fault -> Rest; missions auto-return to Rest"
+Bench Gimbal Check (support),"State is Armed, no mission running
+Props removed or guarded",Pod tilt x and y [deg] (clamped to tilt limit),Armed (bench),"Moves the pod; no motors. Use to set servo signs, us-per-degree, and travel limits without binding","Pod moves the expected direction and amount
+No binding at the limits",'servo off' or Kill,None,"Implemented ('servo'), unchanged"
+Bench Spin / Vibration Test (support),"State is Armed, no mission running
+Drone restrained, props removed or guarded
+Throttle cap set deliberately","Throttle [%] (limited by cap)
+Duration [s] (0.5 to 6)",Armed (bench),"1 s baseline with motors off, then spin; reports the shift in accelerometer magnitude caused by the motors",Shift reported at several throttle levels. Shift near zero -> GENTLE preset may be considered; otherwise stay on ROBUST or add a rangefinder,Kill; time limit,Baseline and spinning mean/std of |specific force|,Implemented ('spin'); now also reports baseline std and a ROBUST/GENTLE hint
+,,,,,,,,
+,,,,,,,,
+Notes:,,,,,,,,
+"Routine = what an operator asks for (with inputs). Macrostates = where the flight is. Controllers = how setpoints are held. A routine checks conditions, runs a sequence of macrostates, and watches for success or abort.",,,,,,,,
+TBD = must be measured or decided by the team. TO ADD = described here but not yet in the code. Numbers are current code defaults.,,,,,,,,
