@@ -1,0 +1,139 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <Preferences.h>
+#include "weeble_core.h"
+#include "weeble_muscles.h"
+
+using namespace weeble;
+
+// ============================ Hardware Pins ============================
+static const uint8_t PIN_ESC_UPPER   = 25, PIN_TACH_UPPER = 4,  CH_ESC_UPPER = 0;
+static const uint8_t PIN_ESC_LOWER   = 26, PIN_TACH_LOWER = 16, CH_ESC_LOWER = 1;
+static const uint8_t PIN_SERVO_X     = 27, CH_SERVO_X     = 2;
+static const uint8_t PIN_SERVO_Y     = 33, CH_SERVO_Y     = 3;
+static const int     PIN_SDA = 21, PIN_SCL = 22;
+static const uint8_t MPU_ADDR = 0x68;
+
+static Params P;
+static Flight flight(P);
+static Preferences prefs;
+static AccelCal acal;
+
+static EscController escUpper({PIN_ESC_UPPER, PIN_TACH_UPPER, 2, 0, 920.0f, 11.1f, 9000.0f, 50, 1000, 2000, 0.00005f, 0.00005f, 0.000001f, 50.0f, 5, 200});
+static EscController escLower({PIN_ESC_LOWER, PIN_TACH_LOWER, 2, 1, 920.0f, 11.1f, 9000.0f, 50, 1000, 2000, 0.00005f, 0.00005f, 0.000001f, 50.0f, 5, 200});
+static LedcServo srvX(PIN_SERVO_X, 500.0f, 2500.0f, PI, CH_SERVO_X);
+static LedcServo srvY(PIN_SERVO_Y, 500.0f, 2500.0f, PI, CH_SERVO_Y);
+
+static bool softLocked = true;
+static float releaseHeight = 6.096f;
+static uint32_t lastTickUs = 0;
+static int imuFail = 0;
+static float imuTempC = 0;
+
+static void safeOutputs() {
+  escUpper.stop(); escLower.stop();
+  srvX.setAngle(PI/2); srvY.setAngle(PI/2);
+}
+
+static void killAll(const char* why) { safeOutputs(); flight.kill(why); Serial.print("KILL: "); Serial.println(why); }
+
+// ============================ IMU Logic ============================
+static bool mpuReadSensor(float a[3], float g[3]) {
+  Wire.beginTransmission(MPU_ADDR); Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0 || Wire.requestFrom((int)MPU_ADDR, 14) != 14) return false;
+  uint8_t b[14]; for (int i = 0; i < 14; i++) b[i] = Wire.read();
+  for (int i = 0; i < 3; i++) {
+    a[i] = (int16_t)((b[i*2]<<8) | b[i*2+1]) / 4096.0f * kG;
+    g[i] = (int16_t)((b[8+i*2]<<8) | b[8+i*2+1]) / 32.8f * kDeg2Rad;
+  }
+  return true;
+}
+static bool mpuRead(Vec3& gyro, Vec3& acc) {
+  float a[3], g[3]; if (!mpuReadSensor(a, g)) return false;
+  applyAccelCal(acal, a);
+  acc = Vec3{a[0], a[1], a[2]}; gyro = Vec3{g[0], g[1], g[2]}; // Assuming standard mapping
+  return true;
+}
+
+// ============================ Serial Logic ============================
+static void handleLine(char* line) {
+  char* t[8]; int nt = 0;
+  for (char* p = strtok(line, " \t"); p && nt < 8; p = strtok(NULL, " \t")) t[nt++] = p;
+  if (nt == 0) return;
+  const char* cmd = t[0]; const char* a1 = nt > 1 ? t[1] : nullptr;
+
+  if (!strcmp(cmd, "status")) { Serial.print("State="); Serial.println(macroName(flight.macro())); }
+  else if (!strcmp(cmd, "unlock")) { softLocked = false; Serial.println("unlocked"); }
+  else if (!strcmp(cmd, "lock")) { softLocked = true; if(flight.idleArmed()) flight.disarm(); Serial.println("locked"); }
+  else if (!strcmp(cmd, "arm")) { 
+    if (softLocked) { Serial.println("refused: locked"); return; }
+    const char* why = ""; if (flight.arm(why)) { escUpper.arm(0); escLower.arm(0); Serial.println("ARMED"); } else Serial.println(why);
+  }
+  else if (!strcmp(cmd, "disarm")) { safeOutputs(); flight.disarm(); Serial.println("disarmed"); }
+  else if (!strcmp(cmd, "k")) killAll("key");
+  else if (!strcmp(cmd, "cap") && a1) { P.throttle_cap = atof(a1)/100.0f; Serial.println("Cap updated"); }
+  else if (!strcmp(cmd, "hop")) {
+    HopArgs h; h.dist_m = a1 ? atof(a1)*0.3048f : 1.524f; h.lean_deg = P.hop_lean_deg;
+    const char* why = ""; if(flight.startHop(h, why)) Serial.println("HOP STARTED"); else Serial.println(why);
+  }
+  else if (!strcmp(cmd, "descent")) {
+    const char* why = ""; if(flight.startDescent(releaseHeight, why)) Serial.println("DESCENT ARMED"); else Serial.println(why);
+  }
+}
+static void handleSerial() {
+  static char buf[64]; static int n = 0;
+  while (Serial.available()) {
+    char ch = Serial.read();
+    if (ch == '\r' || ch == '\n') { if (n>0) { buf[n]=0; n=0; handleLine(buf); } }
+    else if (n == 0 && (ch == 'k' || ch == 'K')) killAll("key");
+    else if (n < 63) buf[n++] = ch;
+  }
+}
+
+// ============================ Main Setup/Loop ============================
+void setup() {
+  Serial.begin(115200); delay(300);
+  Wire.begin(PIN_SDA, PIN_SCL); Wire.setClock(400000);
+  Wire.beginTransmission(0x68); Wire.write(0x6B); Wire.write(0x00); Wire.endTransmission();
+  
+  escUpper.begin(); escLower.begin();
+  srvX.begin(); srvY.begin();
+  safeOutputs();
+
+  prefs.begin("weeble", true);
+  if (prefs.getBytes("acal", &acal, sizeof(acal)) == sizeof(acal) && acal.valid) Serial.println("Cal loaded");
+  prefs.end();
+
+  Serial.println("Weeble Unified Ready. Locked. Cap 15%.");
+  lastTickUs = micros();
+}
+
+void loop() {
+  handleSerial();
+  uint32_t now = micros();
+  if (now - lastTickUs < 5000) return; // 200Hz loop
+  float dt = (now - lastTickUs) * 1e-6f;
+  lastTickUs = now;
+
+  Vec3 g, a;
+  if (!mpuRead(g, a)) {
+    if (++imuFail > 10 && flight.macro() != Macro::REST) killAll("IMU Fail");
+    return;
+  }
+  imuFail = 0;
+
+  Command cmd = flight.update(g, a, dt);
+  if (flight.outputsLive()) {
+    Outputs o = mix(cmd, P);
+    srvX.setAngle(o.servo_x_rad); srvY.setAngle(o.servo_y_rad);
+    if (P.use_closed_loop_rpm) {
+      escUpper.setTargetRPM(o.rpm_upper); escUpper.update();
+      escLower.setTargetRPM(o.rpm_lower); escLower.update();
+    } else {
+      escUpper.setDirectPulseUs(o.esc_upper_us);
+      escLower.setDirectPulseUs(o.esc_lower_us);
+    }
+  } else {
+    safeOutputs();
+  }
+}
