@@ -1,0 +1,17 @@
+   py -3.12 build.py
+
+
+py -3.12 weeble_sim.py descent --cg-dz -20
+py -3.12 weeble_sim.py ascent --cg-dz -20
+py -3.12 weeble_sim.py hop --cg-dz -20
+
+py -3.12 weeble_sim.py hop --cg-dz -20 --seconds 25
+
+
+
+
+py -3.12 weeble_sim.py hop --cg-dz -20 --dist 4 --bearing 90    # 4 ft hop toward the drone's right
+py -3.12 weeble_sim.py ascent --cg-dz -20 --height 0.8           # ascent to 0.8 m
+py -3.12 weeble_sim.py descent --cg-dz -20 --no-viewer           # no window, just the log and result
+py -3.12 weeble_sim.py hop --cg-dz -20 --record 8                # saves the first 8 s as weeble_hop.mp4
+py -3.12 run_tests.py                                            # all three routines under 7 conditions
